@@ -6,15 +6,9 @@ import { statesData } from './us-states'
 
 const { div, h4, b, br, sup, i } = van.tags;
 
+const colors = {1000: '#800026', 500: '#BD0026', 200: '#E31A1C', 100: '#FC4E2A', 50: '#FD8D3C', 20: '#FEB24C', 10: '#FED976', 0: '#FFEDA0'};
 function getColor(d) {
-  return d > 1000 ? '#800026' :
-    d > 500 ? '#BD0026' :
-      d > 200 ? '#E31A1C' :
-        d > 100 ? '#FC4E2A' :
-          d > 50 ? '#FD8D3C' :
-            d > 20 ? '#FEB24C' :
-              d > 10 ? '#FED976' :
-                '#FFEDA0';
+  return Object.entries(colors).reverse().find(([k]) => d > +k)[1];
 }
 
 function style(feature) {
@@ -30,42 +24,32 @@ function style(feature) {
 
 function mountGeojson(map, textInfo) {
   const geojson = leaflet.geoJson(statesData, { style, onEachFeature }).addTo(map);
-  function highlightFeature(e) {
-    const layer = e.target;
-
-    layer.setStyle({
-      weight: 5,
-      color: '#666',
-      dashArray: '',
-      fillOpacity: 0.7
-    });
-    layer.bringToFront();
-    textInfo.val = layer.feature.properties;
-  }
-
-  function resetHighlight(e) {
-    geojson.resetStyle(e.target);
-    textInfo.val = null;
-  }
-
-  function zoomToFeature(e) {
-    map.fitBounds(e.target.getBounds());
-  }
-
-  function onEachFeature(feature, layer) {
+  function onEachFeature(_, layer) {
     layer.on({
-      mouseover: highlightFeature,
-      mouseout: resetHighlight,
-      click: zoomToFeature
+      mouseover: (e) => {
+        const layer = e.target;
+        layer.setStyle({
+          weight: 5,
+          color: '#666',
+          dashArray: '',
+          fillOpacity: 0.7
+        });
+        layer.bringToFront();
+        textInfo.val = layer.feature.properties;
+      },
+      mouseout: (e) => {
+        geojson.resetStyle(e.target);
+        textInfo.val = null;
+      },
+      click: (e) => map.fitBounds(e.target.getBounds())
     });
   }
 }
 
 function mountInfo(map, textInfo) {
   const info = leaflet.control();
-
-  info.onAdd = function (map) {
-    this._div = div({class: 'info'}, h4('US Population Density'), () => {
+  info.onAdd = function () {
+    return this._div = div({ class: 'info' }, h4('US Population Density'), () => {
       const children = [];
       if (textInfo.val) {
         children.push(b(textInfo.val.name));
@@ -78,31 +62,20 @@ function mountInfo(map, textInfo) {
       }
       return div(children);
     });
-    return this._div;
   };
   info.addTo(map);
-
-  return info;
 }
 
 function mountLegend(map) {
   const legend = leaflet.control({ position: 'bottomright' });
-  legend.onAdd = function (map) {
+  legend.onAdd = function () {
     const divDom = div({ class: 'info legend' });
-		const grades = [0, 10, 20, 50, 100, 200, 500, 1000];
-		const labels = [];
-		let from, to;
-
-		for (let n = 0; n < grades.length; n++) {
-			from = grades[n];
-			to = grades[n + 1];
-      labels.push(i( { style: `background:${getColor(from + 1)}` }));
-      labels.push(`${from}${to ? `–${to}` : '+'}`);
-      labels.push(br());
-		}
-
-    van.add(divDom, ...labels);
-		return divDom;
+    const grades = [0, 10, 20, 50, 100, 200, 500, 1000].map((grade, i, arr) => {
+      if (i === arr.length - 1) return { color: getColor(grade + 1), text: `${grade}+` };
+      return { color: getColor(grade + 1), text: `${grade}–${arr[i + 1]}` };
+    });
+    van.add(divDom, ...grades.flatMap(({ color, text }) => [i({ style: `background:${color}` }), text, br()]));
+    return divDom;
   };
   legend.addTo(map);
 }
@@ -110,16 +83,11 @@ function mountLegend(map) {
 function Main() {
   const dom = div({ id: 'map' })
   const map = leaflet.map(dom).setView([37.8, -96], 4);
-  leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-  }).addTo(map);
-  
+  leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
   const textInfo = van.state();
   mountInfo(map, textInfo);
   mountGeojson(map, textInfo);
   mountLegend(map);
-
   setTimeout(() => { map.invalidateSize() });
   return dom;
 }
